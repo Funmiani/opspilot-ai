@@ -1,0 +1,155 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum OrganizationRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum MembershipStatus {
+  ACTIVE
+  SUSPENDED
+  REVOKED
+}
+
+enum IncidentStatus {
+  OPEN
+  INVESTIGATING
+  MITIGATED
+  RESOLVED
+  CLOSED
+}
+
+enum IncidentSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ActivityActorType {
+  USER
+  SYSTEM
+}
+
+enum ActivityEventType {
+  INCIDENT_CREATED
+  STATUS_CHANGED
+  ASSIGNEE_CHANGED
+  COMMENT_ADDED
+  MEMBER_ROLE_CHANGED
+}
+
+model User {
+  id            String               @id @default(uuid()) @db.Uuid
+  email         String               @unique
+  displayName   String?
+  createdAt     DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime             @updatedAt @db.Timestamptz(3)
+  deactivatedAt DateTime?            @db.Timestamptz(3)
+  memberships   OrganizationMember[]
+}
+
+model Organization {
+  id          String               @id @default(uuid()) @db.Uuid
+  name        String
+  slug        String               @unique
+  createdAt   DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime             @updatedAt @db.Timestamptz(3)
+  archivedAt  DateTime?            @db.Timestamptz(3)
+  members     OrganizationMember[]
+  incidents   Incident[]
+  comments    Comment[]
+  activityLog ActivityLog[]
+}
+
+model OrganizationMember {
+  id                String           @id @default(uuid()) @db.Uuid
+  organizationId    String           @db.Uuid
+  userId            String           @db.Uuid
+  role              OrganizationRole @default(MEMBER)
+  status            MembershipStatus @default(ACTIVE)
+  joinedAt          DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime         @updatedAt @db.Timestamptz(3)
+  organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  user              User             @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdIncidents  Incident[]       @relation("IncidentCreator")
+  assignedIncidents Incident[]       @relation("IncidentAssignee")
+  comments          Comment[]
+  activities        ActivityLog[]
+
+  @@unique([organizationId, userId])
+  @@unique([organizationId, id])
+  @@index([userId, status])
+}
+
+model Incident {
+  id                 String              @id @default(uuid()) @db.Uuid
+  organizationId     String              @db.Uuid
+  createdByMemberId  String              @db.Uuid
+  assignedToMemberId String?             @db.Uuid
+  title              String
+  description        String?
+  status             IncidentStatus      @default(OPEN)
+  severity           IncidentSeverity    @default(MEDIUM)
+  createdAt          DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime            @updatedAt @db.Timestamptz(3)
+  mitigatedAt        DateTime?           @db.Timestamptz(3)
+  resolvedAt         DateTime?           @db.Timestamptz(3)
+  closedAt           DateTime?           @db.Timestamptz(3)
+  archivedAt         DateTime?           @db.Timestamptz(3)
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdBy          OrganizationMember  @relation("IncidentCreator", fields: [organizationId, createdByMemberId], references: [organizationId, id], onDelete: Restrict, onUpdate: Restrict)
+  assignedTo         OrganizationMember? @relation("IncidentAssignee", fields: [organizationId, assignedToMemberId], references: [organizationId, id], onDelete: Restrict, onUpdate: Restrict)
+  comments           Comment[]
+  activityLog        ActivityLog[]
+
+  @@unique([organizationId, id])
+  @@index([organizationId, createdAt, id])
+  @@index([organizationId, status, createdAt])
+  @@index([organizationId, assignedToMemberId, status])
+  @@index([organizationId, createdByMemberId])
+}
+
+model Comment {
+  id             String             @id @default(uuid()) @db.Uuid
+  organizationId String             @db.Uuid
+  incidentId     String             @db.Uuid
+  authorMemberId String             @db.Uuid
+  body           String
+  createdAt      DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime           @updatedAt @db.Timestamptz(3)
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  incident       Incident           @relation(fields: [organizationId, incidentId], references: [organizationId, id], onDelete: Restrict, onUpdate: Restrict)
+  author         OrganizationMember @relation(fields: [organizationId, authorMemberId], references: [organizationId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([organizationId, incidentId, createdAt, id])
+  @@index([organizationId, authorMemberId])
+}
+
+// Append-only by application policy; database write restrictions are a later step.
+model ActivityLog {
+  id             String              @id @default(uuid()) @db.Uuid
+  organizationId String              @db.Uuid
+  incidentId     String?             @db.Uuid
+  actorMemberId  String?             @db.Uuid
+  actorType      ActivityActorType
+  eventType      ActivityEventType
+  details        Json?               @db.JsonB
+  createdAt      DateTime            @default(now()) @db.Timestamptz(3)
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  incident       Incident?           @relation(fields: [organizationId, incidentId], references: [organizationId, id], onDelete: Restrict, onUpdate: Restrict)
+  actor          OrganizationMember? @relation(fields: [organizationId, actorMemberId], references: [organizationId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([organizationId, createdAt, id])
+  @@index([organizationId, incidentId, createdAt, id])
+  @@index([organizationId, actorMemberId])
+}
