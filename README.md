@@ -175,3 +175,98 @@ Tests use Node's built-in runner through tsx. The react-server condition enables
 server-only modules in this server test environment. Rollback is tested by a
 test-owned Prisma extension that fails the activity write, without adding a
 production test hook or replacing Prisma transaction execution.
+
+### Server authentication foundation (Milestone 3B)
+
+Better Auth reuses the existing Prisma singleton. No auth HTTP routes, Google
+provider, or sign-in UI are exposed yet. Before using auth, configure
+`BETTER_AUTH_SECRET` with a randomly generated secret (at least 32 characters;
+for example, generate one locally with `openssl rand -base64 32`) and
+`BETTER_AUTH_URL` with the canonical origin in your ignored local environment.
+Never commit the secret. HTTPS is required except HTTP loopback in development.
+Set `NODE_ENV=development` for local standalone authentication scripts.
+
+Configuration is initialized lazily, so unrelated static builds do not need auth
+secrets; any actual auth use fails closed if configuration is missing or invalid.
+Sessions expire after seven days and renew at most daily, without cookie caching.
+Account create/update hooks clear provider credentials before persistence;
+encryption is also enabled. Direct Prisma writes do not execute Better Auth hooks.
+The application session guard returns only `userId` and rechecks deactivation.
+It does not select an organization or authorize tenant operations.
+
+Auth integration tests use the existing explicit `INTEGRATION_DATABASE_URL`
+local-database opt-in and synthetic test secrets. They verify persistence and
+session behavior, not Google OAuth. Fixtures are deleted after each test.
+
+### Google sign-in (Milestone 3C)
+
+Create a Google OAuth **Web application** client with the redirect URI
+`http://localhost:3000/api/auth/callback/google`. Configure the consent screen,
+identity scopes only, and test users as required in Google Auth platform.
+Put `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` directly in your ignored `.env`;
+never paste them into chat or logs. Restart Next.js after configuration changes.
+Use `BETTER_AUTH_URL=http://localhost:3000` and browse using localhost consistently.
+Production requires your HTTPS origin and its matching Google callback URI.
+
+Run `nvm use` and `npm run dev`, then visit `/sign-in`. Continue with Google,
+complete account selection/consent, and confirm `/app` shows the authenticated
+state. The callback passes through `/api/auth/callback/google`. Check User,
+Account, and Session records locally without displaying token values; provider
+credential columns must be null. Inspect the HttpOnly/SameSite=Lax cookie
+(Secure under HTTPS, not local HTTP). Sign out and confirm the previous session
+cannot access `/app`. Same-email accounts are never silently linked; deactivated
+users are denied. No organization membership is created or loaded by this flow.
+
+Automated tests use synthetic configuration and test persistence/transport, not
+real Google authentication. Real browser acceptance remains a manual step.
+
+### Workspace access (Milestone 3D-A)
+
+After sign-in, use the `/app` link to `/workspaces`. A user without memberships
+sees **No workspace access**; authentication never creates membership. One or
+more accessible workspaces remain explicit links, without automatic selection.
+
+Discovery uses one Prisma User lookup with filtered related memberships: it
+rechecks current user availability and returns only organization ID/name for
+ACTIVE memberships in unarchived organizations. Prisma may use multiple SQL
+statements for relation loading. The selected workspace resolver uses the
+organization/user compound key and checks membership, user, and organization
+availability before constructing only actor userId and organizationId.
+Malformed IDs and inaccessible tenants have the same denial; database failures
+remain internal/availability errors. Nothing is stored in shared caches, sessions,
+or cookies as workspace authority. Future commands must still recheck RBAC inside
+their transactions. An explicit development-only workspace bootstrap is available
+as documented below; it never runs automatically during authentication.
+
+### Explicit local workspace bootstrap (Milestone 3D-B)
+
+This administrative command never runs during login. After zero-access testing,
+intentionally provision an existing active local User:
+
+```sh
+NODE_ENV=development npm run dev:bootstrap-workspace -- \
+  --user-id <USER_UUID> \
+  --name "OpsPilot Development" \
+  --slug opspilot-development \
+  --role MEMBER
+```
+
+Use the repository's Node 24 runtime. All four arguments are required. Names are
+trimmed and limited to 100 characters. Slugs are 1–100 lowercase letters/digits
+separated by single hyphens; they are rejected rather than normalized. These are
+bootstrap input limits: the existing database uses unbounded text and unique slug.
+Roles are explicit OWNER, ADMIN, MEMBER, or VIEWER; there is no default role
+or automatic OWNER grant. The command requires an explicit User ID, organization
+name, organization slug, and role. It never infers a User from email, the first
+User, or the current session.
+
+The script reads the same DATABASE_URL as Prisma configuration. It requires
+NODE_ENV=development, a PostgreSQL loopback host, a database path, and no query
+parameters except schema. Conventional production/staging database names are
+rejected. Never use this command against production, staging, or remote databases.
+Loopback cannot detect a tunnel to a remote database: use only the
+repository's local Docker database, never a forwarded production connection.
+User checks, unused-slug checks, Organization and ACTIVE membership creation run
+in one transaction. Duplicate slugs stop execution; no reuse/upsert occurs.
+Existing identity/auth records are not changed. Failed membership writes roll back
+the new Organization. This is not production onboarding.
