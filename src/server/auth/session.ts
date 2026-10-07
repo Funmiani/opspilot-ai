@@ -3,13 +3,15 @@ import { ApplicationError } from "@/server/application/errors";
 import { Prisma } from "@/generated/prisma/client";
 import { getAuth } from "./auth";
 
+export type ApplicationIdentity = Readonly<{ userId: string }>;
+
 type Dependencies = {
   getSession: (headers: Headers) => Promise<{ user: { id: string }; session: { expiresAt: Date } } | null>;
   findUser: (id: string) => Promise<{ id: string; deactivatedAt: Date | null } | null>;
 };
 
 export function makeRequireApplicationIdentity(deps: Dependencies) {
-  return async (headers: Headers): Promise<Readonly<{ userId: string }>> => {
+  return async (headers: Headers): Promise<ApplicationIdentity> => {
     try {
       const verified = await deps.getSession(headers);
       if (!verified || verified.session.expiresAt.getTime() <= Date.now()) {

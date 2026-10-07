@@ -219,3 +219,54 @@ users are denied. No organization membership is created or loaded by this flow.
 
 Automated tests use synthetic configuration and test persistence/transport, not
 real Google authentication. Real browser acceptance remains a manual step.
+
+### Workspace access (Milestone 3D-A)
+
+After sign-in, use the `/app` link to `/workspaces`. A user without memberships
+sees **No workspace access**; authentication never creates membership. One or
+more accessible workspaces remain explicit links, without automatic selection.
+
+Discovery uses one Prisma User lookup with filtered related memberships: it
+rechecks current user availability and returns only organization ID/name for
+ACTIVE memberships in unarchived organizations. Prisma may use multiple SQL
+statements for relation loading. The selected workspace resolver uses the
+organization/user compound key and checks membership, user, and organization
+availability before constructing only actor userId and organizationId.
+Malformed IDs and inaccessible tenants have the same denial; database failures
+remain internal/availability errors. Nothing is stored in shared caches, sessions,
+or cookies as workspace authority. Future commands must still recheck RBAC inside
+their transactions. An explicit development-only workspace bootstrap is available
+as documented below; it never runs automatically during authentication.
+
+### Explicit local workspace bootstrap (Milestone 3D-B)
+
+This administrative command never runs during login. After zero-access testing,
+intentionally provision an existing active local User:
+
+```sh
+NODE_ENV=development npm run dev:bootstrap-workspace -- \
+  --user-id <USER_UUID> \
+  --name "OpsPilot Development" \
+  --slug opspilot-development \
+  --role MEMBER
+```
+
+Use the repository's Node 24 runtime. All four arguments are required. Names are
+trimmed and limited to 100 characters. Slugs are 1–100 lowercase letters/digits
+separated by single hyphens; they are rejected rather than normalized. These are
+bootstrap input limits: the existing database uses unbounded text and unique slug.
+Roles are explicit OWNER, ADMIN, MEMBER, or VIEWER; there is no default role
+or automatic OWNER grant. The command requires an explicit User ID, organization
+name, organization slug, and role. It never infers a User from email, the first
+User, or the current session.
+
+The script reads the same DATABASE_URL as Prisma configuration. It requires
+NODE_ENV=development, a PostgreSQL loopback host, a database path, and no query
+parameters except schema. Conventional production/staging database names are
+rejected. Never use this command against production, staging, or remote databases.
+Loopback cannot detect a tunnel to a remote database: use only the
+repository's local Docker database, never a forwarded production connection.
+User checks, unused-slug checks, Organization and ACTIVE membership creation run
+in one transaction. Duplicate slugs stop execution; no reuse/upsert occurs.
+Existing identity/auth records are not changed. Failed membership writes roll back
+the new Organization. This is not production onboarding.
