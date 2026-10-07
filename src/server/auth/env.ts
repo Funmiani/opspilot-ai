@@ -19,5 +19,11 @@ export function readAuthEnv(env: Record<string, string | undefined> = process.en
       /[?#]/.test(env.BETTER_AUTH_URL ?? "")) {
     throw new Error("BETTER_AUTH_URL must be an HTTPS origin (HTTP loopback is allowed in development), without credentials, path, query, or hash.");
   }
-  return { secret, origin: url.origin };
+  const googleClientId = env.GOOGLE_CLIENT_ID;
+  const googleClientSecret = env.GOOGLE_CLIENT_SECRET;
+  if (!googleClientId || !googleClientSecret ||
+      [googleClientId, googleClientSecret].some(value => /replace|placeholder/i.test(value) || /\s/.test(value))) {
+    throw new Error("Google OAuth server configuration is missing or invalid.");
+  }
+  return { secret, origin: url.origin, googleClientId, googleClientSecret };
 }

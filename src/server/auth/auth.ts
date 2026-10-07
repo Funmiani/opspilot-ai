@@ -2,6 +2,9 @@ import "server-only";
 import { betterAuth, type BetterAuthOptions } from "better-auth";
 import { prismaAdapter } from "@better-auth/prisma-adapter";
 import type { PrismaClient } from "@/generated/prisma/client";
+import { APIError, createAuthMiddleware } from "better-auth/api";
+import { nextCookies } from "better-auth/next-js";
+import { enforceGoogleSignIn, normalizeGoogleName } from "./google-policy";
 import { readAuthEnv } from "./env";
 
 // Used for composition and local integration tests; never accepts browser input.
@@ -19,6 +22,17 @@ export function createAuthOptions(db: PrismaClient, env: ReturnType<typeof readA
     database: prismaAdapter(db, { provider: "postgresql", transaction: true }),
     user: { fields: { name: "displayName" }, deleteUser: { enabled: false } },
     advanced: { database: { generateId: "uuid" }, useSecureCookies: env.origin.startsWith("https://") },
+    socialProviders: { google: {
+      clientId: env.googleClientId, clientSecret: env.googleClientSecret,
+      accessType: "online", includeGrantedScopes: false, prompt: "select_account",
+      mapProfileToUser: (profile) => ({ name: normalizeGoogleName(profile.name) }),
+    } },
+    hooks: { before: createAuthMiddleware(async (ctx) => {
+      if (ctx.path === "/sign-in/social") enforceGoogleSignIn(ctx.body);
+      if (ctx.path === "/link-social") throw new APIError("FORBIDDEN", { message: "Account linking is not available." });
+    }) },
+    onAPIError: { errorURL: `${env.origin}/auth/error` },
+    plugins: [nextCookies()],
     emailAndPassword: { enabled: false },
     session: { expiresIn: 60 * 60 * 24 * 7, updateAge: 60 * 60 * 24, cookieCache: { enabled: false } },
     account: { accountLinking: { disableImplicitLinking: true }, storeAccountCookie: false,

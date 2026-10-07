@@ -197,3 +197,25 @@ It does not select an organization or authorize tenant operations.
 Auth integration tests use the existing explicit `INTEGRATION_DATABASE_URL`
 local-database opt-in and synthetic test secrets. They verify persistence and
 session behavior, not Google OAuth. Fixtures are deleted after each test.
+
+### Google sign-in (Milestone 3C)
+
+Create a Google OAuth **Web application** client with the redirect URI
+`http://localhost:3000/api/auth/callback/google`. Configure the consent screen,
+identity scopes only, and test users as required in Google Auth platform.
+Put `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` directly in your ignored `.env`;
+never paste them into chat or logs. Restart Next.js after configuration changes.
+Use `BETTER_AUTH_URL=http://localhost:3000` and browse using localhost consistently.
+Production requires your HTTPS origin and its matching Google callback URI.
+
+Run `nvm use` and `npm run dev`, then visit `/sign-in`. Continue with Google,
+complete account selection/consent, and confirm `/app` shows the authenticated
+state. The callback passes through `/api/auth/callback/google`. Check User,
+Account, and Session records locally without displaying token values; provider
+credential columns must be null. Inspect the HttpOnly/SameSite=Lax cookie
+(Secure under HTTPS, not local HTTP). Sign out and confirm the previous session
+cannot access `/app`. Same-email accounts are never silently linked; deactivated
+users are denied. No organization membership is created or loaded by this flow.
+
+Automated tests use synthetic configuration and test persistence/transport, not
+real Google authentication. Real browser acceptance remains a manual step.

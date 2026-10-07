@@ -7,8 +7,9 @@ import type { PrismaClient } from "../../src/generated/prisma/client";
 import { makeRequireApplicationIdentity } from "../../src/server/auth/session";
 import { ApplicationError } from "../../src/server/application/errors";
 const secret = randomBytes(32).toString("base64");
-const env = { BETTER_AUTH_SECRET: secret, BETTER_AUTH_URL: "http://localhost:3000", NODE_ENV: "development" };
+const env = { BETTER_AUTH_SECRET: secret, BETTER_AUTH_URL: "http://localhost:3000", NODE_ENV: "development", GOOGLE_CLIENT_ID: "synthetic-client", GOOGLE_CLIENT_SECRET: "synthetic-secret" };
 for (const [name, override] of Object.entries({
+  missingGoogleId: { GOOGLE_CLIENT_ID: undefined }, missingGoogleSecret: { GOOGLE_CLIENT_SECRET: undefined }, placeholderGoogle: { GOOGLE_CLIENT_SECRET: "REPLACE_ME" },
   missingSecret: { BETTER_AUTH_SECRET: undefined }, weakSecret: { BETTER_AUTH_SECRET: "a".repeat(40) },
   normalizedPath: { BETTER_AUTH_URL: "https://example.com/path/.." }, credentials: { BETTER_AUTH_URL: "https://user:pass@example.com" },
   malformedURL: { BETTER_AUTH_URL: "invalid" }, path: { BETTER_AUTH_URL: "https://example.com/path" },
@@ -25,7 +26,9 @@ test("auth configuration uses reviewed database and session policies", async () 
   assert.equal(o.account.accountLinking.disableImplicitLinking, true); assert.equal(o.emailAndPassword.enabled, false);
   assert.deepEqual(o.session, { expiresIn: 604800, updateAge: 86400, cookieCache: { enabled: false } });
   assert.equal(o.account.storeAccountCookie, false); assert.equal(o.account.encryptOAuthTokens, true);
-  assert.equal(o.account.storeStateStrategy, "database"); assert.equal("socialProviders" in o, false);
+  assert.equal(o.account.storeStateStrategy, "database"); assert.equal(o.socialProviders.google.accessType, "online");
+  assert.equal(o.socialProviders.google.includeGrantedScopes, false);
+  assert.equal(o.socialProviders.google.prompt, "select_account");
   for (const hook of [o.databaseHooks.account.create.before, o.databaseHooks.account.update.before]) {
     assert.deepEqual((await hook()).data, { accessToken: null, refreshToken: null, idToken: null, accessTokenExpiresAt: null, refreshTokenExpiresAt: null });
   }
@@ -50,4 +53,24 @@ test("unexpected session verification errors remain safe and retain cause", asyn
   const cause = new Error("sensitive database detail");
   const guard = makeRequireApplicationIdentity({ getSession: async () => { throw cause; }, findUser: async () => null });
   await assert.rejects(guard(new Headers()), (e: unknown) => e instanceof ApplicationError && e.code === "INTERNAL_ERROR" && e.cause === cause && !e.message.includes("sensitive"));
+});
+
+test("Google name normalization and fixed redirect policy", async () => {
+  const { normalizeGoogleName, enforceGoogleSignIn } = await import("../../src/server/auth/google-policy");
+  assert.equal(normalizeGoogleName("  Ada  "), "Ada");
+  for (const name of [undefined, null, "   ", 42]) assert.equal(normalizeGoogleName(name), "OpsPilot user");
+  const body = { provider: "google" };
+  enforceGoogleSignIn(body);
+  assert.deepEqual(body, { provider: "google", callbackURL: "/app", newUserCallbackURL: "/app", errorCallbackURL: "/auth/error" });
+  for (const override of [{ provider: "github" }, { callbackURL: "https://evil.invalid" }, { newUserCallbackURL: "/other" }, { errorCallbackURL: "/other" }, { scopes: ["drive"] }, { additionalParams: { access_type: "offline" } }, { idToken: { token: "x" } }, { disableRedirect: true }]) {
+    assert.throws(() => enforceGoogleSignIn({ provider: "google", ...override }));
+  }
+});
+test("official Next handler forwards GET and POST requests", async () => {
+  const { toNextJsHandler } = await import("better-auth/next-js");
+  const methods: string[] = [];
+  const handlers = toNextJsHandler(async request => { methods.push(request.method); return new Response("ok"); });
+  assert.equal((await handlers.GET(new Request("http://localhost:3000/api/auth/get-session"))).status, 200);
+  assert.equal((await handlers.POST(new Request("http://localhost:3000/api/auth/sign-out", { method: "POST" }))).status, 200);
+  assert.deepEqual(methods, ["GET", "POST"]);
 });
