@@ -132,3 +132,46 @@ not run automatically during installation, application startup, or builds.
 
 `npm run db:studio` opens the database browser. It is a local administration tool,
 not an authenticated application endpoint.
+
+## Create Incident application layer
+
+`src/features/incidents/server/index.ts` exports the server-only `createIncident`
+use case. Its input is unknown and validated with strict Zod rules: trimmed title
+(1–200 characters), optional description (maximum 10,000; blank becomes absent),
+and required severity. Unknown properties are rejected. Response DTOs are independent
+of Prisma and expose ISO date strings.
+
+There is no HTTP route or authentication provider. A future verified server-side
+adapter must supply `TrustedActorContext`; never construct it from unverified headers
+or request body IDs. The type is not authentication. The use case looks up the
+organization/user membership on the server and requires ACTIVE status, an available
+organization/user, and OWNER, ADMIN, or MEMBER role. VIEWER is denied. Missing
+membership and unknown tenant both return FORBIDDEN to avoid tenant enumeration.
+
+Authorization, incident creation, and its server-authored INCIDENT_CREATED event
+run inside one short normal Prisma transaction. Concurrent membership revocation
+can overlap an authorized write; stronger isolation/revocation ordering is future
+hardening. No serializable retries are implemented. Unexpected database errors are
+wrapped with safe messages and their original cause retained internally; a future
+transport must explicitly serialize safe code/message/issues fields only. Planned
+HTTP mappings: validation 422, missing context 401, forbidden 403, not found 404,
+database unavailable 503, internal 500; malformed JSON 400 and creation 201.
+
+```sh
+npm test
+npm run test:integration
+```
+
+Integration tests skip unless `INTEGRATION_DATABASE_URL` is explicitly set to a local
+PostgreSQL URL with the applied schema. They use unique temporary fixtures, remove
+only those fixtures in finally, and never reset the database. To deliberately run
+against the local development database without displaying its URL:
+
+```sh
+node --env-file=.env --input-type=module -e 'import { spawnSync } from "node:child_process"; const r=spawnSync("npm",["run","test:integration"],{stdio:"inherit",env:{...process.env,INTEGRATION_DATABASE_URL:process.env.DATABASE_URL}}); process.exit(r.status ?? 1);'
+```
+
+Tests use Node's built-in runner through tsx. The react-server condition enables
+server-only modules in this server test environment. Rollback is tested by a
+test-owned Prisma extension that fails the activity write, without adding a
+production test hook or replacing Prisma transaction execution.
