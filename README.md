@@ -175,3 +175,25 @@ Tests use Node's built-in runner through tsx. The react-server condition enables
 server-only modules in this server test environment. Rollback is tested by a
 test-owned Prisma extension that fails the activity write, without adding a
 production test hook or replacing Prisma transaction execution.
+
+### Server authentication foundation (Milestone 3B)
+
+Better Auth reuses the existing Prisma singleton. No auth HTTP routes, Google
+provider, or sign-in UI are exposed yet. Before using auth, configure
+`BETTER_AUTH_SECRET` with a randomly generated secret (at least 32 characters;
+for example, generate one locally with `openssl rand -base64 32`) and
+`BETTER_AUTH_URL` with the canonical origin in your ignored local environment.
+Never commit the secret. HTTPS is required except HTTP loopback in development.
+Set `NODE_ENV=development` for local standalone authentication scripts.
+
+Configuration is initialized lazily, so unrelated static builds do not need auth
+secrets; any actual auth use fails closed if configuration is missing or invalid.
+Sessions expire after seven days and renew at most daily, without cookie caching.
+Account create/update hooks clear provider credentials before persistence;
+encryption is also enabled. Direct Prisma writes do not execute Better Auth hooks.
+The application session guard returns only `userId` and rechecks deactivation.
+It does not select an organization or authorize tenant operations.
+
+Auth integration tests use the existing explicit `INTEGRATION_DATABASE_URL`
+local-database opt-in and synthetic test secrets. They verify persistence and
+session behavior, not Google OAuth. Fixtures are deleted after each test.
