@@ -270,3 +270,31 @@ User checks, unused-slug checks, Organization and ACTIVE membership creation run
 in one transaction. Duplicate slugs stop execution; no reuse/upsert occurs.
 Existing identity/auth records are not changed. Failed membership writes roll back
 the new Organization. This is not production onboarding.
+
+### Authenticated Create Incident API (Milestone 4A)
+
+`POST /api/workspaces/[organizationId]/incidents` accepts only `title`, optional
+`description`, and `severity` (LOW, MEDIUM, HIGH, CRITICAL). Unknown fields are
+rejected by the existing strict application schema. Success returns the existing
+Incident DTO with HTTP 201; no detail endpoint or Location header exists yet.
+
+Browser requests require an Origin exactly matching the validated BETTER_AUTH_URL
+origin and Content-Type application/json (normal parameters are accepted).
+Missing/null/foreign origins and cross-site Fetch Metadata are rejected with 403.
+No credentialed cross-origin CORS is enabled. JSON bodies are limited to 64 KiB,
+including streamed requests: malformed JSON returns 400, oversized bodies 413,
+and unsupported media types 415. All responses use Cache-Control: no-store.
+
+The endpoint verifies the database-backed session and active local User, resolves
+the untrusted URL tenant, then calls the existing create use case. Tenant denials
+share a generic 404; an accessible workspace's create-permission denial is 403.
+Unauthenticated requests return 401, validation 400, recognized database
+unavailability 503, and unexpected failures a safe 500. Public validation issues
+allowlist title/description/severity, use fixed messages, and return at most five
+issues; internal errors and original causes are never serialized or logged.
+
+The use case rechecks current membership, role, and availability inside its short
+transaction. Incident and INCIDENT_CREATED ActivityLog commit together, with
+server-derived attribution. No read endpoints or incident UI are implemented.
+Idempotency is deferred: if a commit succeeds but its response is lost, a deliberate
+retry can create a duplicate incident. Exactly-once behavior is not guaranteed.
