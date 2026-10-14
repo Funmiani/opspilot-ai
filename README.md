@@ -357,3 +357,35 @@ Mounted form behavior, focus, refresh wiring, and visual/keyboard accessibility
 require real browser acceptance; Node tests verify extracted logic and database
 capabilities, not mounted React behavior. Already-rendered content is not revoked
 in realtime; subsequent reads/writes enforce current database authority.
+
+### Investigation domain foundation (Milestone 5A)
+
+Comment is the human investigation-note mechanism. CommentKind defaults to NOTE;
+HYPOTHESIS means an unconfirmed possible explanation, and ACTION means reported
+human work, not an executable instruction or proof an external action occurred.
+IncidentEvidence stores human-supplied material for consideration, not verified
+truth: LOG_EXCERPT, ERROR_MESSAGE, DEPLOYMENT_REFERENCE, MONITORING_ALERT,
+OBSERVATION, or REFERENCE. No evidence origin column or arbitrary metadata exists.
+Future AI output must not use the human-evidence path while pretending to be
+human evidence. ActivityLog records an OpsPilot operation, not objective truth.
+
+Evidence has UUID identifiers, same-tenant Incident and author-membership foreign
+keys, RESTRICT deletion/update behavior, and a server timestamp. No updatedAt is
+needed for the planned append-only V1 APIs; the database does not enforce
+append-only writes. COMMENT_ADDED is retained; EVIDENCE_ADDED is available for
+future application use. No investigation APIs, UI, or context assembly exist yet.
+
+The reviewed migration uses TEXT with named CHECK constraints for Comment
+body (1–10,000 characters), evidence title (1–200), content (1–20,000), and optional
+sourceUrl (at most 2,048). Nonblank checks cover ordinary ASCII whitespace.
+PostgreSQL character counts differ from JavaScript UTF-16 lengths; future strict
+Zod validation must trim input and enforce the approved application bounds.
+URL HTTP/HTTPS and credential validation remain future application responsibilities.
+CHECK constraints are custom migration SQL and are not represented by Prisma;
+retain and review them in future schema changes. The migration is applied to the
+local development database; existing development records remain intact. Rollback-only
+PostgreSQL tests cover tenant constraints, enums, storage boundaries, defaults, and
+RESTRICT actions. PostgreSQL reports tested RESTRICT failures as SQLSTATE 23001;
+invalid child foreign keys use 23503, invalid enums 22P02, and CHECK failures 23514.
+A Unicode diagnostic confirms one emoji has PostgreSQL length 1 and JavaScript
+length 2; these storage and future application bounds are not semantically identical.

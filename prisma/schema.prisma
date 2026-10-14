@@ -35,6 +35,22 @@ enum IncidentSeverity {
   CRITICAL
 }
 
+// Human commentary; hypotheses remain unconfirmed and actions are reported work.
+enum CommentKind {
+  NOTE
+  HYPOTHESIS
+  ACTION
+}
+
+enum IncidentEvidenceType {
+  LOG_EXCERPT
+  ERROR_MESSAGE
+  DEPLOYMENT_REFERENCE
+  MONITORING_ALERT
+  OBSERVATION
+  REFERENCE
+}
+
 enum ActivityActorType {
   USER
   SYSTEM
@@ -46,6 +62,7 @@ enum ActivityEventType {
   ASSIGNEE_CHANGED
   COMMENT_ADDED
   MEMBER_ROLE_CHANGED
+  EVIDENCE_ADDED
 }
 
 model User {
@@ -72,22 +89,24 @@ model Organization {
   members     OrganizationMember[]
   incidents   Incident[]
   comments    Comment[]
+  evidence    IncidentEvidence[]
   activityLog ActivityLog[]
 }
 
 model OrganizationMember {
-  id                String           @id @default(uuid()) @db.Uuid
-  organizationId    String           @db.Uuid
-  userId            String           @db.Uuid
-  role              OrganizationRole @default(MEMBER)
-  status            MembershipStatus @default(ACTIVE)
-  joinedAt          DateTime         @default(now()) @db.Timestamptz(3)
-  updatedAt         DateTime         @updatedAt @db.Timestamptz(3)
-  organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  user              User             @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  createdIncidents  Incident[]       @relation("IncidentCreator")
-  assignedIncidents Incident[]       @relation("IncidentAssignee")
+  id                String             @id @default(uuid()) @db.Uuid
+  organizationId    String             @db.Uuid
+  userId            String             @db.Uuid
+  role              OrganizationRole   @default(MEMBER)
+  status            MembershipStatus   @default(ACTIVE)
+  joinedAt          DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime           @updatedAt @db.Timestamptz(3)
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  user              User               @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdIncidents  Incident[]         @relation("IncidentCreator")
+  assignedIncidents Incident[]         @relation("IncidentAssignee")
   comments          Comment[]
+  evidence          IncidentEvidence[]
   activities        ActivityLog[]
 
   @@unique([organizationId, userId])
@@ -114,6 +133,7 @@ model Incident {
   createdBy          OrganizationMember  @relation("IncidentCreator", fields: [organizationId, createdByMemberId], references: [organizationId, id], onDelete: Restrict, onUpdate: Restrict)
   assignedTo         OrganizationMember? @relation("IncidentAssignee", fields: [organizationId, assignedToMemberId], references: [organizationId, id], onDelete: Restrict, onUpdate: Restrict)
   comments           Comment[]
+  evidence           IncidentEvidence[]
   activityLog        ActivityLog[]
 
   @@unique([organizationId, id])
@@ -129,6 +149,7 @@ model Comment {
   incidentId     String             @db.Uuid
   authorMemberId String             @db.Uuid
   body           String
+  kind           CommentKind        @default(NOTE)
   createdAt      DateTime           @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime           @updatedAt @db.Timestamptz(3)
   organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
@@ -137,6 +158,26 @@ model Comment {
 
   @@index([organizationId, incidentId, createdAt, id])
   @@index([organizationId, authorMemberId])
+}
+
+// Supplied investigation material, not independently verified truth.
+// V1 supports human submission only; append-only APIs are a future application policy.
+model IncidentEvidence {
+  id                String               @id @default(uuid()) @db.Uuid
+  organizationId    String               @db.Uuid
+  incidentId        String               @db.Uuid
+  createdByMemberId String               @db.Uuid
+  type              IncidentEvidenceType
+  title             String
+  content           String
+  sourceUrl         String?
+  createdAt         DateTime             @default(now()) @db.Timestamptz(3)
+  organization      Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  incident          Incident             @relation(fields: [organizationId, incidentId], references: [organizationId, id], onDelete: Restrict, onUpdate: Restrict)
+  createdBy         OrganizationMember   @relation(fields: [organizationId, createdByMemberId], references: [organizationId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([organizationId, incidentId, createdAt, id])
+  @@index([organizationId, createdByMemberId])
 }
 
 // Append-only by application policy; database write restrictions are a later step.
