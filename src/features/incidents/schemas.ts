@@ -6,3 +6,5 @@ export const createIncidentSchema = z.strictObject({
   description: z.string().max(10_000).transform((value) => value.trim() || undefined).optional(),
   severity: z.enum(incidentSeverities),
 });
+
+export const incidentIdSchema = z.uuid();

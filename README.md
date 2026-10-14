@@ -276,7 +276,7 @@ the new Organization. This is not production onboarding.
 `POST /api/workspaces/[organizationId]/incidents` accepts only `title`, optional
 `description`, and `severity` (LOW, MEDIUM, HIGH, CRITICAL). Unknown fields are
 rejected by the existing strict application schema. Success returns the existing
-Incident DTO with HTTP 201; no detail endpoint or Location header exists yet.
+Incident DTO with HTTP 201; creation does not currently return a Location header.
 
 Browser requests require an Origin exactly matching the validated BETTER_AUTH_URL
 origin and Content-Type application/json (normal parameters are accepted).
@@ -295,6 +295,34 @@ issues; internal errors and original causes are never serialized or logged.
 
 The use case rechecks current membership, role, and availability inside its short
 transaction. Incident and INCIDENT_CREATED ActivityLog commit together, with
-server-derived attribution. No read endpoints or incident UI are implemented.
+server-derived attribution. Milestone 4A introduced POST incident creation;
+Milestone 4B adds GET tenant-scoped incident list and detail endpoints, documented
+below. Incident UI is not implemented.
 Idempotency is deferred: if a commit succeeds but its response is lost, a deliberate
 retry can create a duplicate incident. Exactly-once behavior is not guaranteed.
+
+### Tenant-scoped Incident Reads (Milestone 4B)
+
+`GET /api/workspaces/[organizationId]/incidents` returns
+`{ items: IncidentDto[], nextCursor: string | null }`. Optional `limit` is a
+decimal integer string from 1–100 (default 20); optional `cursor` is a bounded,
+versioned base64url position containing only a millisecond ISO timestamp and
+Incident UUID. Duplicate/unknown query parameters and invalid values return safe
+400 responses. Ordering is createdAt DESC, id DESC; the query fetches limit + 1
+and emits a cursor from the last returned item only when another page exists.
+There is no total count. Cursors carry no tenant authority and are not encrypted.
+
+`GET /api/workspaces/[organizationId]/incidents/[incidentId]` returns an IncidentDto.
+Both APIs return only id, title, description, severity, actual status, and ISO
+createdAt/updatedAt strings. ACTIVE OWNER, ADMIN, MEMBER, and VIEWER may read;
+unknown roles deny. Current User availability, membership, role, and Organization
+availability are rechecked inside a short transaction before the tenant-scoped
+query. Normal transactions do not serialize every concurrent authorization change.
+
+Archived Incidents are excluded; unarchived CLOSED Incidents remain readable.
+Malformed/missing/cross-tenant/archived Incident IDs share a generic 404. Inaccessible
+tenants and read-access denials are concealed; unexpected database failures remain
+safe 503/500 responses. All handler responses use Cache-Control: no-store.
+GET needs neither Origin nor Content-Type and runs no POST body/CSRF helper.
+No cross-origin credentialed CORS is enabled; POST security remains unchanged.
+No incident UI, filtering, or archive/restore capability is implemented.
