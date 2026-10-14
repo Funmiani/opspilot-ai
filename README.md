@@ -394,7 +394,8 @@ length 2; these storage and future application bounds are not semantically ident
 
 Server-only addInvestigationNote/listInvestigationNotes and
 addIncidentEvidence/listIncidentEvidence now expose create/read application
-operations. No investigation HTTP routes, forms, or context assembler exist yet.
+operations. Investigation HTTP routes are documented in 5B-2 below; forms and
+context assembly remain deferred.
 ACTIVE OWNER/ADMIN/MEMBER can add content; VIEWER can read. Every operation
 rechecks current membership, User and Organization availability, and the
 same-tenant unarchived parent Incident. Missing/inaccessible parents are concealed
@@ -423,8 +424,33 @@ DB provenance guarantee. No author profile or internal membership fields are ret
 Both lists require authorized parent access even when empty, scope by tenant AND
 Incident, and reuse compatible timestamp/UUID keyset primitives (default 20, max 100,
 limit + 1, createdAt DESC/id DESC). Existing Incident pagination exports are retained.
-Duplicate URL parameter handling remains future HTTP transport work in 5B-2.
+Duplicate investigation pagination parameters are rejected by the HTTP transport.
 
 The approved investigation-specific 192 KiB POST limit is reserved for 5B-2;
 5B-1 does not change the existing 64 KiB Incident HTTP limit or any route behavior.
 No investigation UI, AI output persistence, integrations, or URL previews exist.
+
+### Investigation HTTP API (Milestone 5B-2)
+
+GET/POST `/api/workspaces/[organizationId]/incidents/[incidentId]/notes` and
+GET/POST `/api/workspaces/[organizationId]/incidents/[incidentId]/evidence` now
+compose verified application identity, trusted tenant resolution, and the existing
+investigation use cases. POST returns 201 with the approved DTO; GET returns 200
+with `{ items, nextCursor }`. URL identifiers remain untrusted until server-side
+checks; routes perform no business authorization, attribution, or Prisma writes.
+
+POST requires exact trusted Origin, rejects cross-site Sec-Fetch-Site, and accepts
+application/json with normal parameters. Investigation POST explicitly opts into
+INVESTIGATION_POST_MAX_BYTES (192 KiB); streamed bytes are bounded regardless of
+Content-Length. Existing Incident creation retains the default 64 KiB limit.
+GET needs neither Origin nor Content-Type. Duplicate/unknown pagination parameters,
+invalid limits, and invalid cursors are rejected; default 20/max 100 remain unchanged.
+
+All handler responses use Cache-Control: no-store. Validation/malformed JSON return
+safe 400; unauthenticated 401; concealed tenant/parent denial 404; accessible VIEWER
+write denial 403; oversized body 413; unsupported media type 415; recognized database
+unavailability 503; unexpected failure 500. Investigation validation uses fixed
+generic responses without submitted content or Zod internals. No credentialed
+cross-origin CORS, automatic retries, or idempotency guarantee is introduced.
+Source URLs are never fetched, resolved, previewed, or logged by these handlers.
+No investigation UI or context assembly is implemented.
