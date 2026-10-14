@@ -297,7 +297,8 @@ The use case rechecks current membership, role, and availability inside its shor
 transaction. Incident and INCIDENT_CREATED ActivityLog commit together, with
 server-derived attribution. Milestone 4A introduced POST incident creation;
 Milestone 4B adds GET tenant-scoped incident list and detail endpoints, documented
-below. Incident UI is not implemented.
+below. The permission-aware workspace Incident UI supports authorized creation;
+Incident detail UI remains unimplemented.
 Idempotency is deferred: if a commit succeeds but its response is lost, a deliberate
 retry can create a duplicate incident. Exactly-once behavior is not guaranteed.
 
@@ -325,4 +326,34 @@ tenants and read-access denials are concealed; unexpected database failures rema
 safe 503/500 responses. All handler responses use Cache-Control: no-store.
 GET needs neither Origin nor Content-Type and runs no POST body/CSRF helper.
 No cross-origin credentialed CORS is enabled; POST security remains unchanged.
-No incident UI, filtering, or archive/restore capability is implemented.
+Authenticated tenant-scoped reads and the permission-aware workspace Incident UI
+are implemented, including creation by authorized users. Incident detail UI,
+filtering, and archive/restore capability remain unimplemented.
+
+### Minimal Incident Workspace UI (Milestone 4C)
+
+`/workspaces/[organizationId]` now renders the first 20 incidents directly through
+server-side identity verification, tenant resolution, and the authorized read use
+case. A separate server-only capability lookup reloads current membership and
+availability and returns only canCreateIncident. This is a presentation hint;
+the create API independently enforces current database authorization.
+
+The list shows title, severity, status, a description excerpt, and UTC timestamps.
+Empty workspaces display "No incidents yet." When further rows exist, the page
+reports "Showing the latest 20 incidents." Pagination controls remain deferred.
+ACTIVE OWNER/ADMIN/MEMBER see an inline create form; VIEWER sees read-only copy.
+
+The small client form reuses the client-safe strict create schema for UX and sends
+only title, optional description, and severity through the existing same-origin
+POST. Confirmed 201 resets the form, announces success, and calls router.refresh()
+to reload server identity, tenant access, incidents, and capabilities. Failures
+preserve input and display fixed safe messages. Session/workspace failures offer
+fixed navigation; 403 refreshes permission presentation. A synchronous guard and
+disabled controls prevent accidental concurrent submits, without API idempotency.
+Network failures have an uncertain outcome: check the list before retrying.
+
+No route loading file, UI libraries, detail UI, or new dependencies are added.
+Mounted form behavior, focus, refresh wiring, and visual/keyboard accessibility
+require real browser acceptance; Node tests verify extracted logic and database
+capabilities, not mounted React behavior. Already-rendered content is not revoked
+in realtime; subsequent reads/writes enforce current database authority.
