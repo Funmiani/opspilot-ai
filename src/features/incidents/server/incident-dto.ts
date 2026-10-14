@@ -1,5 +1,5 @@
 import "server-only";
-import type { CreateIncidentResponse, IncidentSeverity } from "../contracts";
+import type { CreateIncidentResponse, IncidentSeverity, IncidentStatus, IncidentDto } from "../contracts";
 
 type CreatedIncident = {
   id: string; title: string; description: string | null; severity: IncidentSeverity;
@@ -12,6 +12,18 @@ export function toCreatedIncidentDto(incident: CreatedIncident): CreateIncidentR
     description: incident.description,
     severity: incident.severity,
     status: "OPEN",
+    createdAt: incident.createdAt.toISOString(),
+    updatedAt: incident.updatedAt.toISOString(),
+  };
+}
+
+export function toIncidentDto(incident: CreatedIncident & { status: IncidentStatus }): IncidentDto {
+  return {
+    id: incident.id,
+    title: incident.title,
+    description: incident.description,
+    severity: incident.severity,
+    status: incident.status,
     createdAt: incident.createdAt.toISOString(),
     updatedAt: incident.updatedAt.toISOString(),
   };
