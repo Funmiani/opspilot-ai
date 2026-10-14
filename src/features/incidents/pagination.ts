@@ -10,7 +10,7 @@ const cursorPayloadSchema = z.strictObject({
   id: z.uuid(),
 });
 
-export const incidentCursorSchema = z.string().min(1).max(256)
+export const incidentPositionCursorSchema = z.string().min(1).max(256)
   .regex(/^[A-Za-z0-9_-]+$/)
   .transform((value, ctx) => {
     try {
@@ -25,6 +25,10 @@ export const incidentCursorSchema = z.string().min(1).max(256)
   });
 
 // Position only: never carries tenant authority or requires a global row lookup.
-export function encodeIncidentCursor(row: { createdAt: Date; id: string }): string {
+export function encodeIncidentPositionCursor(row: { createdAt: Date; id: string }): string {
   return Buffer.from(JSON.stringify({ version: 1, createdAt: row.createdAt.toISOString(), id: row.id })).toString("base64url");
 }
+
+// Compatibility exports preserve existing Incident pagination behavior.
+export const incidentCursorSchema = incidentPositionCursorSchema;
+export const encodeIncidentCursor = encodeIncidentPositionCursor;

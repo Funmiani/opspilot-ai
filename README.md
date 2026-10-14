@@ -389,3 +389,42 @@ RESTRICT actions. PostgreSQL reports tested RESTRICT failures as SQLSTATE 23001;
 invalid child foreign keys use 23503, invalid enums 22P02, and CHECK failures 23514.
 A Unicode diagnostic confirms one emoji has PostgreSQL length 1 and JavaScript
 length 2; these storage and future application bounds are not semantically identical.
+
+### Investigation application foundation (Milestone 5B-1)
+
+Server-only addInvestigationNote/listInvestigationNotes and
+addIncidentEvidence/listIncidentEvidence now expose create/read application
+operations. No investigation HTTP routes, forms, or context assembler exist yet.
+ACTIVE OWNER/ADMIN/MEMBER can add content; VIEWER can read. Every operation
+rechecks current membership, User and Organization availability, and the
+same-tenant unarchived parent Incident. Missing/inaccessible parents are concealed
+before an accessible VIEWER receives operation FORBIDDEN. Context carries no role.
+
+Write transactions derive contributor membership from trusted actor/tenant context,
+insert only allowlisted fields, and atomically record COMMENT_ADDED or EVIDENCE_ADDED.
+Details contain only version, new content ID, and kind/type. Activity failure rolls
+back content. No external calls occur; normal transactions do not eliminate every
+concurrent-revocation race. V1 create/read-only is application policy, not a SQL
+UPDATE/DELETE prohibition.
+
+Strict input schemas require explicit kind/type and reject unknown authority fields.
+Trimmed note body is 1–10,000 UTF-16 units, evidence title 1–200, and content 1–20,000.
+Installed Zod 4.6.5 string bounds count code points; explicit JavaScript length checks
+therefore enforce these UTF-16 limits. PostgreSQL storage CHECK semantics also
+remain distinct. Investigation text is untrusted data, not HTML or AI instructions.
+Optional sourceUrl is trimmed, blank becomes NULL, and nonblank values are bounded
+at 2,048 UTF-16 units, HTTP/HTTPS only, without credentials or control characters.
+The trimmed submitted representation is preserved. URLs are never fetched or resolved.
+
+Note DTOs expose only id/body/kind/createdAt. Evidence DTOs expose only
+id/type/title/content/sourceUrl/createdAt and application-derived HUMAN_SUPPLIED.
+This origin denotes the supported human-submission path, not verified truth or a
+DB provenance guarantee. No author profile or internal membership fields are returned.
+Both lists require authorized parent access even when empty, scope by tenant AND
+Incident, and reuse compatible timestamp/UUID keyset primitives (default 20, max 100,
+limit + 1, createdAt DESC/id DESC). Existing Incident pagination exports are retained.
+Duplicate URL parameter handling remains future HTTP transport work in 5B-2.
+
+The approved investigation-specific 192 KiB POST limit is reserved for 5B-2;
+5B-1 does not change the existing 64 KiB Incident HTTP limit or any route behavior.
+No investigation UI, AI output persistence, integrations, or URL previews exist.
