@@ -7,3 +7,7 @@ export function canCreateIncident(role: string): boolean {
 export function canReadIncident(role: string): boolean {
   return role === "OWNER" || role === "ADMIN" || role === "MEMBER" || role === "VIEWER";
 }
+
+export const canReadInvestigation = canReadIncident;
+export const canAddInvestigationNote = canCreateIncident;
+export const canAddIncidentEvidence = canCreateIncident;
